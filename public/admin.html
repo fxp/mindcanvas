@@ -85,6 +85,15 @@
         </div>
         <div class="hint">主讲(speaker)可登录主讲台；管理员(admin)可登录主讲台与本后台。默认账户 admin / speaker，请尽快改密码。</div>
       </div>
+
+      <div class="panel">
+        <h3>会话留痕 · 按频道 + session <span style="float:right"><button class="btn ghost" id="refreshSessionsBtn" style="font-size:12px;padding:5px 10px">刷新</button></span></h3>
+        <table class="mt">
+          <thead><tr><th>频道</th><th>会话 ID</th><th>标题</th><th>状态</th><th>开始</th><th>规模</th><th>事件</th><th>音频</th><th>操作</th></tr></thead>
+          <tbody id="sessions"></tbody>
+        </table>
+        <div class="hint">每场「开讲→结束」为一个 session，完整记录所有事件（评论/表情/ASR/幻灯片/AI 同事…）与音频。导出 = 该场的全量 JSON（含事件日志与快照）。</div>
+      </div>
     </div>
   </div>
 

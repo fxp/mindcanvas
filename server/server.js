@@ -165,6 +165,8 @@ class Room {
   constructor(id) {
     this.id = id;
     this.store = new Store();
+    this.sessionId = uid('s');          // §按 session 留痕：一场「开讲→结束」
+    this.sessionStartedAt = Date.now();
     this.sim = null;
     this.history = []; // §「演化回放」snapshots of rendered state over time
     this.lastHistoryAt = 0;
@@ -197,6 +199,9 @@ class Room {
     this.digest = null;
     this.digestAt = 0;
     this.digestSig = '';
+    this.audioSeq = 0;
+    this.sessionId = uid('s');          // 新的一场 session
+    this.sessionStartedAt = Date.now();
     this.dirty = true;
   }
 }
@@ -228,20 +233,55 @@ function getRoom(id) {
 function applyEvent(room, ev) {
   if (room.ended) return; // locked
   room.store.applyEvent(ev);
+  // §逐事件留痕：记录到 events 表（按 room+session）。剥离大字段（如幻灯片 base64 图）。
+  safeDb(() => {
+    const { imageUrl, dataUrl, ...rest } = ev || {};
+    DB.addEvent(room.id, room.sessionId, (ev && ev.type) || 'unknown', JSON.stringify(rest));
+  });
   room.dirty = true;
+}
+
+// §session 留痕：把当前 store 状态写入 sessions 表（按 sessionId，不覆盖跨场）
+function persistSession(room, status) {
+  try {
+    const s = room.store;
+    let pts = 0;
+    for (const n of s.nodes.values()) if (n.kind === 'point') pts++;
+    if (pts === 0 && s.comments.size === 0 && !status) return; // 空场不存
+    const snap = s.snapshot();
+    DB.upsertSession({
+      id: room.sessionId,
+      room: room.id,
+      title: s.config.title || '',
+      status,
+      started_at: room.sessionStartedAt,
+      stats: JSON.stringify({ ...snap.stats, sections: (s.nodes.get(s.root)?.children || []).length, points: pts }),
+      snapshot: JSON.stringify(snap),
+      digest_md: room.digest ? room.digest.markdown : null,
+    });
+  } catch (e) {
+    console.warn('[session]', e.message);
+  }
+}
+
+// 封存当前 session（开讲→结束的「结束」）后开一场新的：reset 会换新的 sessionId
+function newSession(room) {
+  persistSession(room, 'ended');
+  if (room.sessionId) safeDb(() => DB.endSession(room.sessionId));
+  room.reset();
 }
 
 function handleControl(room, msg) {
   if (room.ended) return; // locked — only admin can reopen
   switch (msg.action) {
     case 'sim.start':
-      // a simulation always starts from a blank canvas
-      room.reset();
+      // a simulation always starts from a blank canvas (seal previous session)
+      newSession(room);
       room.sim = runSimulation((ev) => applyEvent(room, ev), { speed: msg.speed || 1 });
       room.dirty = true;
       break;
     case 'transcript.start':
-      room.reset();
+      newSession(room);
       room.sim = runTranscript((ev) => applyEvent(room, ev), { speed: msg.speed || 2.5 });
       room.dirty = true;
       break;
@@ -250,7 +290,7 @@ function handleControl(room, msg) {
       room.sim = null;
       break;
     case 'reset':
-      room.reset();
+      newSession(room);
       break;
     case 'agents.on':
       room.agentsOn = true;
@@ -438,7 +478,8 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const room = getRoom(body.room);
       persistMeeting(room, 'ended');
-      safeDb(() => DB.endMeeting(room.id));
+      persistSession(room, 'ended');
+      safeDb(() => { DB.endMeeting(room.id); DB.endSession(room.sessionId); });
       room.frozenSnapshot = room.store.snapshot();
       room.ended = true;
       if (room.sim) room.sim.stop();
@@ -456,7 +497,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const rid = sanitizeRoomId(body.room || 'r' + Math.random().toString(36).slice(2, 7));
       const room = getRoom(rid);
-      room.ended = false; room.reset();
+      room.ended = false; newSession(room);
       safeDb(() => DB.reopenMeeting(rid));
       if (body.title) applyEvent(room, { type: 'session.config', title: body.title });
       return json(200, { ok: true, room: rid });
@@ -511,6 +552,61 @@ const server = http.createServer(async (req, res) => {
       safeDb(() => DB.deleteUser(uname));
       return json(200, { ok: true });
     }
+
+    // ---- 会话留痕：按频道+session 浏览/导出 ----
+    if (url.pathname === '/api/admin/sessions' && req.method === 'GET') {
+      const room = url.searchParams.get('room') ? sanitizeRoomId(url.searchParams.get('room')) : null;
+      // 也把当前进行中的活跃 session 合进来（可能还没落库）
+      const rows = safeDb(() => DB.listSessions(room)) || [];
+      const known = new Set(rows.map((r) => r.id));
+      for (const rm of rooms.values()) {
+        if (room && rm.id !== room) continue;
+        if (!known.has(rm.sessionId)) {
+          const snap = rm.store.snapshot();
+          let pts = 0; for (const n of rm.store.nodes.values()) if (n.kind === 'point') pts++;
+          if (pts || rm.store.comments.size) rows.unshift({ id: rm.sessionId, room: rm.id, title: rm.store.config.title || '', status: rm.ended ? 'ended' : 'live', started_at: rm.sessionStartedAt, ended_at: null, updated_at: Date.now(), stats: JSON.stringify(snap.stats), events: '~', audio: { n: 0, bytes: 0 }, live: true });
+        }
+      }
+      return json(200, { ok: true, sessions: rows });
+    }
+    if (url.pathname === '/api/admin/session' && req.method === 'GET') {
+      const s = safeDb(() => DB.getSession(url.searchParams.get('id')));
+      if (!s) return json(404, { ok: false });
+      return json(200, { ok: true, session: { ...s, snapshot: undefined }, snapshot: s.snapshot ? JSON.parse(s.snapshot) : null });
+    }
+    if (url.pathname === '/api/admin/session/events' && req.method === 'GET') {
+      const evs = safeDb(() => DB.listEvents(url.searchParams.get('id'), Number(url.searchParams.get('limit') || 5000))) || [];
+      return json(200, { ok: true, events: evs.map((e) => ({ seq: e.seq, t: e.t, type: e.type, payload: (() => { try { return JSON.parse(e.payload); } catch { return e.payload; } })() })) });
+    }
+    if (url.pathname === '/api/admin/session/audio') {
+      const sid = url.searchParams.get('id');
+      const seq = Number(url.searchParams.get('seq') || 1);
+      const c = safeDb(() => DB.getSessionAudioChunk(sid, seq));
+      if (!c) return json(404, { ok: false });
+      res.writeHead(200, { 'content-type': c.mime || 'audio/wav', 'content-disposition': `attachment; filename="${sid}-${seq}.wav"` });
+      res.end(Buffer.from(c.bytes));
+      return;
+    }
+    if (url.pathname === '/api/admin/session/export' && req.method === 'GET') {
+      const s = safeDb(() => DB.getSession(url.searchParams.get('id')));
+      if (!s) return json(404, { ok: false });
+      const events = safeDb(() => DB.listEvents(s.id, 100000)) || [];
+      const bundle = {
+        session: { id: s.id, room: s.room, title: s.title, status: s.status, started_at: s.started_at, ended_at: s.ended_at, stats: s.stats ? JSON.parse(s.stats) : null },
+        snapshot: s.snapshot ? JSON.parse(s.snapshot) : null,
+        digest_md: s.digest_md || null,
+        events: events.map((e) => ({ seq: e.seq, t: e.t, type: e.type, payload: (() => { try { return JSON.parse(e.payload); } catch { return e.payload; } })() })),
+      };
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="session-${s.id}.json"` });
+      res.end(JSON.stringify(bundle, null, 2));
+      return;
+    }
+    if (url.pathname === '/api/admin/session' && req.method === 'DELETE') {
+      const b = JSON.parse(await readBody(req));
+      safeDb(() => DB.deleteSession(b.id));
+      return json(200, { ok: true });
+    }
+
     return json(404, { ok: false, error: 'unknown admin route' });
   }
 
@@ -594,7 +690,7 @@ const server = http.createServer(async (req, res) => {
       const id = (url.searchParams.get('id') || 'mic_' + uid('a')).replace(/[^a-z0-9_-]/gi, '').slice(0, 48);
       const buf = await readBodyBuffer(req);
       if (!buf.length) return json(400, { ok: false, error: 'empty audio' });
-      try { DB.addAudio(room.id, ++room.audioSeq, 'audio/wav', buf); } catch { /* no db */ } // §会议音频保存
+      try { DB.addAudio(room.id, ++room.audioSeq, 'audio/wav', buf, room.sessionId); } catch { /* no db */ } // §会议音频保存（按 session）
       const r = await llmTranscribe(buf);
       if (r.segments && r.segments.length) {
         // diarized: one asr.segment per speaker turn
@@ -891,6 +987,7 @@ setInterval(() => {
     if (sig === room.persistSig) continue;
     room.persistSig = sig;
     persistMeeting(room);
+    persistSession(room); // §按 session 留痕（滚动快照）
   }
 }, 25000);
 

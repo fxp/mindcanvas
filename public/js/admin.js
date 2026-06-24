@@ -42,8 +42,59 @@
     loadConfig();
     loadMeetings();
     loadUsers();
+    loadSessions();
     clearInterval(refreshTimer);
     refreshTimer = setInterval(loadMeetings, 5000);
+  }
+
+  // ---- 会话留痕（按频道 + session） ----
+  function dl(filename, blob) {
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(u), 1000);
+  }
+  async function loadSessions() {
+    let d;
+    try { d = await (await adminFetch('/api/admin/sessions')).json(); } catch { return; }
+    const rows = (d.sessions || []).map((s) => {
+      const st = s.stats ? (typeof s.stats === 'string' ? JSON.parse(s.stats) : s.stats) : {};
+      const scale = st.points != null ? `${st.sections || 0}节·${st.points || 0}点·${st.commentCount || 0}评·${st.participants || 0}人` : '—';
+      const au = s.audio && s.audio.n ? `${s.audio.n}/${kb(s.audio.bytes)}` : '—';
+      const live = s.live ? ' <span class="st live">LIVE</span>' : '';
+      return `<tr>
+        <td class="mono">${esc(s.room)}</td>
+        <td class="mono" style="font-size:11px">${esc(String(s.id).slice(0, 12))}</td>
+        <td>${esc((s.title || '未命名').slice(0, 18))}</td>
+        <td><span class="st ${s.status === 'ended' ? 'ended' : 'active'}">${s.status === 'ended' ? '已结束' : '进行中'}</span>${live}</td>
+        <td class="mono">${fmtTime(s.started_at)}</td>
+        <td class="mono">${esc(scale)}</td>
+        <td class="mono">${s.events}</td>
+        <td class="mono">${au}</td>
+        <td>
+          <button class="actbtn" data-sx="export" data-id="${esc(s.id)}">导出</button>
+          <button class="actbtn" data-sx="events" data-id="${esc(s.id)}">事件</button>
+          <button class="actbtn danger" data-sx="del" data-id="${esc(s.id)}">删除</button>
+        </td></tr>`;
+    }).join('');
+    $('sessions').innerHTML = rows || '<tr><td colspan="9" style="color:var(--faint);padding:14px">暂无会话</td></tr>';
+    $('sessions').querySelectorAll('button[data-sx]').forEach((b) => b.addEventListener('click', () => sessionAction(b.getAttribute('data-sx'), b.getAttribute('data-id'))));
+  }
+  async function sessionAction(act, id) {
+    try {
+      if (act === 'export') {
+        const blob = await (await adminFetch('/api/admin/session/export?id=' + encodeURIComponent(id))).blob();
+        dl('session-' + id + '.json', blob); toast('已导出');
+      } else if (act === 'events') {
+        const d = await (await adminFetch('/api/admin/session/events?id=' + encodeURIComponent(id) + '&limit=40')).json();
+        const lines = (d.events || []).map((e) => new Date(e.t).toLocaleTimeString() + ' · ' + e.type + ' · ' + JSON.stringify(e.payload).slice(0, 70));
+        alert(lines.length ? '最近 ' + lines.length + ' 条事件：\n\n' + lines.join('\n') : '该会话暂无事件');
+      } else if (act === 'del') {
+        if (!confirm('删除该会话留痕（含事件与音频）？不可恢复。')) return;
+        await adminFetch('/api/admin/session', { method: 'DELETE', body: JSON.stringify({ id }) });
+        toast('已删除'); loadSessions();
+      }
+    } catch (e) { toast('失败：' + e.message); }
   }
 
   // verify the stored token belongs to an admin
@@ -194,6 +245,7 @@
     } catch (e) { $('userStatus').textContent = '失败：' + e.message; }
   });
   $('refreshUsersBtn').addEventListener('click', loadUsers);
+  $('refreshSessionsBtn').addEventListener('click', loadSessions);
 
   $('refreshBtn').addEventListener('click', loadMeetings);
   $('loginBtn').addEventListener('click', () => login($('userInput').value.trim().toLowerCase(), $('passInput').value));

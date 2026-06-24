@@ -23,13 +23,28 @@ export function initDb(dbPath) {
     );
     CREATE TABLE IF NOT EXISTS audio (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      room TEXT, seq INTEGER, t INTEGER, mime TEXT, bytes BLOB
+      room TEXT, seq INTEGER, t INTEGER, mime TEXT, bytes BLOB, session_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_audio_room ON audio(room);
+    CREATE INDEX IF NOT EXISTS idx_audio_session ON audio(session_id);
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY, pass TEXT, role TEXT, created_at INTEGER
     );
+    -- §按频道+session 完整留痕：每场会议一条 session + 逐事件 events
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY, room TEXT, title TEXT, status TEXT DEFAULT 'active',
+      started_at INTEGER, ended_at INTEGER, updated_at INTEGER,
+      stats TEXT, snapshot TEXT, digest_md TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_room ON sessions(room);
+    CREATE TABLE IF NOT EXISTS events (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      room TEXT, session_id TEXT, t INTEGER, type TEXT, payload TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
   `);
+  // 旧库迁移：audio 表可能没有 session_id 列
+  try { db.exec('ALTER TABLE audio ADD COLUMN session_id TEXT'); } catch { /* 已有 */ }
   return db;
 }
 
@@ -101,12 +116,58 @@ export function deleteMeeting(room) {
 }
 
 // ---- audio ----
-export function addAudio(room, seq, mime, bytes) {
-  db.prepare('INSERT INTO audio(room,seq,t,mime,bytes) VALUES(?,?,?,?,?)').run(room, seq, Date.now(), mime, bytes);
+export function addAudio(room, seq, mime, bytes, sessionId = null) {
+  db.prepare('INSERT INTO audio(room,seq,t,mime,bytes,session_id) VALUES(?,?,?,?,?,?)').run(room, seq, Date.now(), mime, bytes, sessionId);
 }
 export function audioInfo(room) {
   return db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(bytes)),0) AS bytes FROM audio WHERE room=?').get(room);
 }
 export function getAudioChunk(room, seq) {
   return db.prepare('SELECT mime, bytes FROM audio WHERE room=? AND seq=?').get(room, seq);
+}
+
+// ---- sessions（每场会议：开讲→结束）----
+export function upsertSession(s) {
+  const now = Date.now();
+  const ex = db.prepare('SELECT id FROM sessions WHERE id=?').get(s.id);
+  if (ex) {
+    db.prepare('UPDATE sessions SET room=?, title=?, stats=?, snapshot=?, digest_md=?, updated_at=?, status=COALESCE(?,status) WHERE id=?')
+      .run(s.room, s.title ?? null, s.stats ?? null, s.snapshot ?? null, s.digest_md ?? null, now, s.status ?? null, s.id);
+  } else {
+    db.prepare('INSERT INTO sessions(id,room,title,status,started_at,updated_at,stats,snapshot,digest_md) VALUES(?,?,?,?,?,?,?,?,?)')
+      .run(s.id, s.room, s.title ?? null, s.status ?? 'active', s.started_at ?? now, now, s.stats ?? null, s.snapshot ?? null, s.digest_md ?? null);
+  }
+}
+export function endSession(id) {
+  const now = Date.now();
+  db.prepare("UPDATE sessions SET status='ended', ended_at=?, updated_at=? WHERE id=?").run(now, now, id);
+}
+export function listSessions(room) {
+  const rows = room
+    ? db.prepare('SELECT id,room,title,status,started_at,ended_at,updated_at,stats FROM sessions WHERE room=? ORDER BY started_at DESC').all(room)
+    : db.prepare('SELECT id,room,title,status,started_at,ended_at,updated_at,stats FROM sessions ORDER BY started_at DESC').all();
+  return rows.map((r) => ({
+    ...r,
+    events: db.prepare('SELECT COUNT(*) AS n FROM events WHERE session_id=?').get(r.id).n,
+    audio: db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(bytes)),0) AS bytes FROM audio WHERE session_id=?').get(r.id),
+  }));
+}
+export function getSession(id) {
+  return db.prepare('SELECT * FROM sessions WHERE id=?').get(id);
+}
+export function deleteSession(id) {
+  db.prepare('DELETE FROM sessions WHERE id=?').run(id);
+  db.prepare('DELETE FROM events WHERE session_id=?').run(id);
+  db.prepare('DELETE FROM audio WHERE session_id=?').run(id);
+}
+
+// ---- events（逐事件留痕）----
+export function addEvent(room, sessionId, type, payload) {
+  db.prepare('INSERT INTO events(room,session_id,t,type,payload) VALUES(?,?,?,?,?)').run(room, sessionId, Date.now(), type, payload);
+}
+export function listEvents(sessionId, limit = 5000) {
+  return db.prepare('SELECT seq,t,type,payload FROM events WHERE session_id=? ORDER BY seq LIMIT ?').all(sessionId, limit);
+}
+export function getSessionAudioChunk(sessionId, seq) {
+  return db.prepare('SELECT mime, bytes FROM audio WHERE session_id=? AND seq=?').get(sessionId, seq);
 }
