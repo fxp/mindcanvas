@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>会议纪要 · MindCanvas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">MindCanvas</span>
+    <span class="title">会议纪要 · 分享版</span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="copyMd" style="font-size:12px;padding:6px 12px">复制 Markdown</button>
+  </div>
+  <div class="canvas" id="page" style="overflow-y:auto"></div>
+  <div class="toast" id="toast"></div>
+  <script type="module" src="/js/digest-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# MindCanvas 离线部署 —— 使用已 docker load 的镜像，不联网、不构建。
+services:
+  mindcanvas:
+    image: mindcanvas:latest
+    container_name: mindcanvas
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      - mindcanvas_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mindcanvas_data:

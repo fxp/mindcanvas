@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindCanvas · 大屏</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #14110d; --bg2: #1d1812; --ink: #f4ede0; --muted: #b3a892; --faint: #7d735f;
+      --line: #2e2820; --accent: #ff7a4d; --hot: #ffb454; --q: #6db6ff; --agree: #74d39a; --confuse: #c39bff;
+      --serif: "Fraunces", Georgia, "Songti SC", serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: radial-gradient(120% 100% at 80% 0%, #1d1812 0%, #14110d 60%); color: var(--ink); font-family: var(--sans); overflow: hidden; }
+    body { display: flex; flex-direction: column; height: 100vh; }
+
+    .top { display: flex; align-items: center; gap: 20px; padding: 22px 36px; border-bottom: 1px solid var(--line); }
+    .brand { font-family: var(--serif); font-weight: 700; font-size: 24px; letter-spacing: -.01em; }
+    .title { font-family: var(--serif); font-size: 22px; color: var(--muted); border-left: 1px solid var(--line); padding-left: 18px; max-width: 46vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .live { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: .08em; }
+    .live .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,122,77,.6);} 70% { box-shadow: 0 0 0 12px rgba(255,122,77,0);} 100% { box-shadow: 0 0 0 0 rgba(255,122,77,0);} }
+    .spacer { flex: 1; }
+    .stat { text-align: center; }
+    .stat .n { font-family: var(--serif); font-weight: 600; font-size: 40px; line-height: 1; display: block; }
+    .stat .l { font-family: var(--mono); font-size: 12px; color: var(--faint); letter-spacing: .1em; }
+    .stat.bump .n { animation: bump .5s ease; }
+    @keyframes bump { 0% { transform: scale(1); color: var(--ink);} 30% { transform: scale(1.25); color: var(--accent);} 100% { transform: scale(1);} }
+    .roomchip, .asrchip { font-family: var(--mono); font-size: 12px; color: var(--faint); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+
+    .main { flex: 1; display: grid; grid-template-columns: 1.35fr 1fr; gap: 0; min-height: 0; }
+    .left { padding: 40px 44px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .right { border-left: 1px solid var(--line); padding: 30px 34px; display: flex; flex-direction: column; gap: 22px; min-height: 0; background: rgba(0,0,0,.15); }
+
+    .now-label { font-family: var(--mono); font-size: 15px; color: var(--accent); letter-spacing: .14em; margin-bottom: 14px; }
+    .now-title { font-family: var(--serif); font-weight: 700; font-size: 64px; line-height: 1.08; letter-spacing: -.02em; margin-bottom: 34px; }
+    .now-title.prov { color: var(--faint); }
+    .now-core { font-size: 36px; line-height: 1.45; color: var(--ink); padding: 18px 26px; border-left: 5px solid var(--accent); background: rgba(255,122,77,.06); border-radius: 0 10px 10px 0; }
+    .now-core:empty { display: none; }
+    .speaking { margin-top: auto; font-size: 24px; color: var(--faint); font-style: italic; padding-top: 18px; }
+    .speaking .cur { color: var(--accent); animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .sec-label { font-family: var(--mono); font-size: 13px; color: var(--faint); letter-spacing: .12em; margin-bottom: 10px; text-transform: uppercase; }
+    .spotlight { background: linear-gradient(135deg, #2a2117, #1d1812); border: 1px solid #4a3a28; border-radius: 14px; padding: 22px 24px; box-shadow: 0 8px 40px rgba(0,0,0,.4); }
+    .spotlight.flash { animation: flash 1.1s ease; }
+    @keyframes flash { 0% { transform: scale(.96); box-shadow: 0 0 0 0 rgba(255,122,77,.5); border-color: var(--accent);} 40% { transform: scale(1.02); box-shadow: 0 0 60px rgba(255,122,77,.35);} 100% { transform: scale(1); box-shadow: 0 8px 40px rgba(0,0,0,.4);} }
+    .spotlight .who { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 8px; }
+    .spotlight .txt { font-size: 30px; line-height: 1.3; font-weight: 500; }
+    .spotlight .anchor { font-family: var(--mono); font-size: 13px; color: var(--faint); margin-top: 10px; }
+    .spotlight.empty .txt { color: var(--faint); font-size: 22px; font-style: italic; }
+
+    .feed { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+    .feed .item { font-size: 18px; color: var(--muted); opacity: 0; transform: translateY(-8px); animation: slidein .4s forwards; line-height: 1.35; }
+    .feed .item .tag { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 4px; margin-right: 8px; }
+    .tag.question { background: rgba(109,182,255,.16); color: var(--q); }
+    .tag.comment { background: rgba(255,255,255,.08); color: var(--muted); }
+    @keyframes slidein { to { opacity: 1; transform: translateY(0); } }
+
+    .qbox h3, .feedbox h3, .suppbox h3 { font-family: var(--mono); font-size: 13px; color: var(--faint); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 12px; }
+    .supp { background: rgba(109,182,255,.09); border-left: 3px solid var(--q); border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 10px; }
+    .supp-t { font-size: 19px; line-height: 1.35; color: var(--ink); }
+    .supp-s { font-family: var(--mono); font-size: 12px; color: var(--q); margin-top: 5px; }
+    .q { font-size: 21px; line-height: 1.35; margin-bottom: 12px; color: var(--ink); }
+    .q .cnt { font-family: var(--serif); font-weight: 700; color: var(--q); margin-right: 10px; }
+    .feedbox { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+    .tally { display: flex; gap: 22px; padding: 14px 36px; border-top: 1px solid var(--line); font-family: var(--mono); }
+    .tally span { font-size: 26px; color: var(--muted); }
+    .tally b { color: var(--ink); }
+
+    #floats { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+    .float { position: absolute; font-size: 44px; will-change: transform, opacity; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <span class="brand">MindCanvas</span>
+    <span class="title" id="title">—</span>
+    <span class="live"><span class="dot"></span><span id="liveLabel">LIVE</span></span>
+    <span class="spacer"></span>
+    <span class="roomchip" id="roomChip">房间</span>
+    <span class="asrchip" id="asrChip">🎙 ASR</span>
+    <span class="stat" id="statP"><span class="n" id="nP">0</span><span class="l">参与</span></span>
+    <span class="stat" id="statI"><span class="n" id="nI">0</span><span class="l">互动</span></span>
+  </div>
+
+  <div class="main">
+    <div class="left">
+      <div class="now-label">正在讨论</div>
+      <div class="now-title" id="nowTitle">等待开始…</div>
+      <div class="now-core" id="nowCore"></div>
+      <div class="speaking" id="speaking"></div>
+    </div>
+    <div class="right">
+      <div>
+        <div class="sec-label">最新发言</div>
+        <div class="spotlight empty" id="spotlight"><div class="txt">等待现场互动…</div></div>
+      </div>
+      <div class="feedbox">
+        <h3>实时互动流</h3>
+        <div class="feed" id="feed"></div>
+      </div>
+      <div class="qbox">
+        <h3>焦点问题</h3>
+        <div id="questions"></div>
+      </div>
+      <div class="suppbox">
+        <h3>🔎 资料补充 · 实时检索</h3>
+        <div id="supps"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tally" id="tally"></div>
+  <div id="floats"></div>
+  <script type="module" src="/js/screen.js"></script>
+</body>
+</html>

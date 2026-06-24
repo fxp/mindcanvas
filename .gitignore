@@ -1,0 +1,19 @@
+# secrets & runtime state — never commit
+.env
+node_modules/
+data/
+.digests/
+*.log
+.DS_Store
+.gstack/
+
+# build outputs / large binaries (distributed via GitHub Releases)
+*.tgz
+*.pptx
+release/
+
+# internal / un-sanitized docs & notes (superseded by DEPLOY.md / USAGE.md)
+部署文档.md
+使用说明.md
+会议纪要-*.md
+fly.toml

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindCanvas · 管理后台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .admin { max-width: 1000px; margin: 0 auto; padding: 24px 20px; overflow-y: auto; flex: 1; }
+    .admin h1 { font-family: var(--serif); font-size: 26px; margin: 0 0 4px; }
+    table.mt { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.mt th { text-align: left; font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line-strong); }
+    table.mt td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    table.mt tr:hover td { background: var(--panel-2); }
+    .st { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .st.active { background: #effaf2; color: var(--agree); border: 1px solid #bfe0cc; }
+    .st.ended { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line-strong); }
+    .st.live { background: var(--accent-soft); color: var(--accent); border: 1px solid #f0cdc3; }
+    .mt .mono { font-family: var(--mono); font-size: 12px; }
+    .actbtn { font-family: var(--mono); font-size: 11px; padding: 4px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); cursor: pointer; margin-right: 4px; }
+    .actbtn:hover { border-color: var(--accent); color: var(--accent); }
+    .actbtn.danger:hover { border-color: #c0392b; color: #c0392b; }
+    #login { max-width: 360px; margin: 60px auto; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">MindCanvas</span>
+    <span class="title">管理后台</span>
+    <span class="spacer"></span>
+    <span class="badge" id="engineBadge">综合引擎</span>
+    <button class="btn ghost" id="logoutBtn" style="font-size:12px;padding:6px 12px;display:none">退出</button>
+  </div>
+
+  <div class="admin">
+    <div id="login" class="panel" style="display:none">
+      <h3>管理员登录</h3>
+      <div class="field"><label>用户名</label><input id="userInput" autocomplete="username" placeholder="admin" /></div>
+      <div class="field"><label>密码</label><input id="passInput" type="password" autocomplete="current-password" placeholder="密码" /></div>
+      <button class="btn" id="loginBtn">进入</button>
+      <span class="asr-status" id="loginStatus"></span>
+    </div>
+
+    <div id="dash" style="display:none">
+      <h1>会议与配置管理</h1>
+
+      <div class="panel">
+        <h3>综合引擎 · API Key（持久化保存在服务器）</h3>
+        <div class="field"><label>Provider</label>
+          <select id="cfgProvider"><option value="zhipu">智谱 GLM · BigModel</option><option value="anthropic">Claude · Anthropic</option></select>
+        </div>
+        <div class="field"><label>API Key</label><input id="cfgKey" type="password" autocomplete="off" placeholder="粘贴 key（保存后会持久化，重启不丢）" /></div>
+        <div class="field"><label>Endpoint（可选）</label><input id="cfgEndpoint" placeholder="留空=默认 open.bigmodel.cn" /></div>
+        <div class="field"><label>模型（可选）</label><input id="cfgModel" placeholder="glm-5.1 / claude-haiku-4-5-20251001" /></div>
+        <div class="row">
+          <button class="btn" id="cfgSave">保存并校验</button>
+          <button class="btn ghost" id="cfgClear">清除已存 key</button>
+          <span class="asr-status" id="cfgStatus"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>会议管理 <span style="float:right"><button class="btn ghost" id="newMeetingBtn" style="font-size:12px;padding:5px 10px">＋ 新建会议</button> <button class="btn ghost" id="refreshBtn" style="font-size:12px;padding:5px 10px">刷新</button></span></h3>
+        <table class="mt">
+          <thead><tr><th>房间</th><th>标题</th><th>状态</th><th>规模</th><th>音频</th><th>更新</th><th>操作</th></tr></thead>
+          <tbody id="meetings"></tbody>
+        </table>
+        <div class="hint" id="mtHint">会议结束后只有此后台能结束/重开；数据与音频持久化保存在服务器 SQLite。</div>
+      </div>
+
+      <div class="panel">
+        <h3>用户管理 <span style="float:right"><button class="btn ghost" id="refreshUsersBtn" style="font-size:12px;padding:5px 10px">刷新</button></span></h3>
+        <table class="mt">
+          <thead><tr><th>用户名</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody id="users"></tbody>
+        </table>
+        <div class="row" style="margin-top:12px;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <div class="field" style="margin:0"><label>用户名</label><input id="newUser" placeholder="如 speaker2" style="width:140px" /></div>
+          <div class="field" style="margin:0"><label>密码</label><input id="newPass" type="password" placeholder="密码" style="width:140px" /></div>
+          <div class="field" style="margin:0"><label>角色</label><select id="newRole"><option value="speaker">主讲 speaker</option><option value="admin">管理员 admin</option></select></div>
+          <button class="btn" id="addUserBtn">新增 / 更新</button>
+          <span class="asr-status" id="userStatus"></span>
+        </div>
+        <div class="hint">主讲(speaker)可登录主讲台；管理员(admin)可登录主讲台与本后台。默认账户 admin / speaker，请尽快改密码。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

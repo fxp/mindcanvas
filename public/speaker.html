@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindCanvas · 主讲台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    #authGate { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center;
+      background: rgba(28,25,23,.55); backdrop-filter: blur(4px); }
+    #authGate .panel { width: 340px; max-width: 90vw; margin: 0; box-shadow: 0 24px 60px rgba(0,0,0,.22); }
+    #authGate h3 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <!-- login gate (Speaker only; audience & screen are open) -->
+  <div id="authGate">
+    <div class="panel">
+      <h3>主讲台登录</h3>
+      <div class="field"><label>用户名</label><input id="agUser" autocomplete="username" placeholder="speaker" /></div>
+      <div class="field"><label>密码</label><input id="agPass" type="password" autocomplete="current-password" placeholder="密码" /></div>
+      <button class="btn" id="agLogin">登录</button>
+      <span class="asr-status" id="agMsg"></span>
+      <div class="hint">仅主讲台与管理后台需要登录；观众参会页与大屏无需登录。</div>
+    </div>
+  </div>
+
+  <div class="topbar">
+    <span class="brand">MindCanvas</span>
+    <span class="title">主讲台 · Speaker Console</span>
+    <span class="spacer"></span>
+    <span class="badge" id="llmBadge">综合引擎</span>
+    <a class="btn ghost" id="openAudience" href="/" target="_blank" style="font-size:12px;padding:6px 12px;text-decoration:none">打开观众画布 ↗</a>
+    <button class="btn ghost" onclick="mcLogout()" style="font-size:12px;padding:6px 12px">退出登录</button>
+  </div>
+
+  <div class="console">
+    <h1>主讲台</h1>
+    <div class="sub">幻灯片定章节骨架，语音填页内讲解。你的输入实时收敛成观众端的认知画布。</div>
+
+    <div class="panel">
+      <h3>房间 · <span id="roomName" class="mono"></span></h3>
+      <div class="field">
+        <label>观众链接（发给听众，同一房间）</label>
+        <input id="roomLink" readonly />
+      </div>
+      <div class="row">
+        <button class="btn ghost" id="copyRoomLink">复制观众链接</button>
+        <button class="btn ghost" id="newRoomBtn">＋ 新建房间</button>
+        <button class="btn ghost" id="openScreen">📺 大屏展示</button>
+      </div>
+      <div class="hint">每个房间是独立的一场会，互不串台。新建房间会切到一条新链接；把观众链接发给听众即可同场。</div>
+    </div>
+
+    <div class="panel">
+      <h3>数据备份 / 导出</h3>
+      <div class="row">
+        <button class="btn ghost" id="exportJson">导出数据 JSON</button>
+        <button class="btn ghost" id="exportMd">导出纪要 Markdown</button>
+        <button class="btn ghost" id="exportTxt">导出转写 TXT</button>
+      </div>
+      <div class="hint" id="backupHint">所有数据每几秒自动备份到本地浏览器（localStorage），刷新/断网不丢，可随时导出。</div>
+    </div>
+
+    <div class="panel">
+      <h3>① 会议</h3>
+      <div class="field">
+        <label>会议标题</label>
+        <input id="titleInput" placeholder="例如：MindCanvas 产品分享会" />
+      </div>
+      <button class="btn" id="setTitleBtn">设置标题</button>
+    </div>
+
+    <div class="panel">
+      <h3>② 幻灯片 → 章节骨架</h3>
+      <div class="field">
+        <label>幻灯片标题（= 章节标题）</label>
+        <input id="slideTitle" placeholder="例如：核心机制：带时间轴的提纲树" />
+      </div>
+      <div class="field">
+        <label>页面要点 / OCR 文本（可选）</label>
+        <textarea id="slideBody" placeholder="可粘贴该页要点；上传图片时若已配置 Claude 将自动 OCR 预填"></textarea>
+      </div>
+      <div class="row">
+        <input type="file" id="slideImage" accept="image/*" />
+        <button class="btn" id="addSlideBtn">＋ 下一页 / 添加幻灯片</button>
+      </div>
+      <div class="hint">每加一页 = 一个新章节边界（§2.2 翻页=最干净的话题边界）。</div>
+      <div class="slide-list" id="slideList" style="margin-top:12px"></div>
+    </div>
+
+    <div class="panel">
+      <h3>③ 语音 → 页内讲解</h3>
+      <div class="row">
+        <button class="btn" id="micBtn">🎙 开始语音转写</button>
+        <span class="asr-status" id="asrStatus">点击开始 · VAD 按停顿断句 → glm-asr</span>
+      </div>
+      <div class="asr-live" id="asrLive" style="margin-top:10px">（实时转写将显示在这里）</div>
+      <div class="hint">
+        glm-asr 是<b>非流式</b>（按片段请求/响应）。我们用<b>客户端 VAD（按停顿断句）</b>在其上做出流式效果：连续录音、说话停顿处自动切一段、立即送识别、按序回填，既不切词也低延迟。浏览器本地编码 WAV → glm-asr，国内可用、不依赖 Google。<br />
+        没麦克风可用下方<b>手动输入</b>或上传音频文件；需 ⑥ 配置已开通「语音/ASR」资源包的 GLM key。
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>或手动输入一句讲解（无麦克风时使用）</label>
+        <textarea id="manualAsr" placeholder="输入一句话，回车发送为讲解片段"></textarea>
+      </div>
+      <button class="btn ghost" id="sendManualBtn">发送讲解片段</button>
+      <div class="field" style="margin-top:14px">
+        <label>或上传音频文件测试（mp3 / wav / m4a，浏览器解码切片 → GLM-ASR）</label>
+        <input type="file" id="audioFile" accept="audio/*" />
+      </div>
+      <div class="asr-status" id="fileStatus"></div>
+    </div>
+
+    <div class="panel">
+      <h3>④ 模拟会议（无需硬件即可演示）</h3>
+      <div class="row">
+        <button class="btn" id="simStartBtn">▶ 播放模拟会议</button>
+        <button class="btn ghost" id="simStopBtn">⏸ 停止</button>
+      </div>
+      <div class="hint">模拟会自动播放一场分享 + 几百条观众评论/表情，用来观察 many-to-one 实时综合。会议的「结束/清空」已收归 <a href="/admin" target="_blank">管理后台</a>，主讲台无法结束会议。</div>
+    </div>
+
+    <div class="panel">
+      <h3>⑤′ AI 同事参与（增强参与感）</h3>
+      <div class="row">
+        <button class="btn ghost" id="agentsBtn">🤖 AI 同事参与：关</button>
+      </div>
+      <div class="hint">开启后，几位不同身份的 AI 同事（产品/架构/怀疑派/新人/数据控/行业观察）会<b>不定时</b>对当前正在讲的内容发表评论或提问，让场子更活。需 ⑥ 配好 GLM key。</div>
+    </div>
+
+    <div class="panel">
+      <h3>⑤ 真实演讲文稿（纯语音，无幻灯片）</h3>
+      <div class="row">
+        <button class="btn" id="transcriptBtn">▶ 播放真实文稿</button>
+      </div>
+      <div class="hint">
+        蔡元培《就任北京大学校长之演说》(1917, 公有领域) 逐句作为语音输入。无幻灯片 → 章节标题需靠语音“听一阵”后才提炼出来，并随话题切换自动分段（§2.2 off-deck）。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>⑥ 综合引擎 · API Key（前端配置）</h3>
+      <div class="field">
+        <label>Provider</label>
+        <select id="cfgProvider">
+          <option value="zhipu">智谱 GLM · BigModel</option>
+          <option value="anthropic">Claude · Anthropic</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input id="cfgKey" type="password" autocomplete="off" placeholder="粘贴你的 key" />
+      </div>
+      <div class="field">
+        <label>Endpoint（可选，自定义/代理/自建，OpenAI 兼容）</label>
+        <input id="cfgEndpoint" placeholder="留空=默认 https://open.bigmodel.cn/api/paas/v4" />
+      </div>
+      <div class="field">
+        <label>模型（可选）</label>
+        <input id="cfgModel" placeholder="glm-5.1 / glm-4.6 / claude-haiku-4-5-20251001" />
+      </div>
+      <div class="row">
+        <button class="btn" id="cfgSave">保存并校验</button>
+        <span class="asr-status" id="cfgStatus"></span>
+      </div>
+      <div class="hint">
+        部署版不烘焙任何 key。这里配置的 key 只存于服务器内存（本房间共享），不写文件、不回传前端、重启即失效。未配置时走启发式回退。
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="/js/speaker.js"></script>
+</body>
+</html>

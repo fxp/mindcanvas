@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindCanvas · 认知画布</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">MindCanvas</span>
+    <span class="title" id="meetingTitle">—</span>
+    <span class="live"><span class="dot"></span><span id="liveLabel">LIVE</span></span>
+    <span class="badge" id="roomChip" title="当前房间">房间</span>
+    <span class="badge" id="asrChip" title="ASR 识别状态">🎙 ASR</span>
+    <span class="spacer"></span>
+    <span class="stat">参与 <b id="statParticipants">0</b> 人</span>
+    <span class="stat"><b id="statPeople">0</b> 互动</span>
+    <span class="stat"><b id="statComments">0</b> 评论</span>
+    <span class="badge" id="llmBadge">综合引擎</span>
+    <div class="tabs" id="viewTabs">
+      <button data-view="outline" class="active">大纲</button>
+      <button data-view="cards">卡片</button>
+      <button data-view="timeline">时间线</button>
+      <button data-view="mindmap">导图</button>
+      <button data-view="replay">回放</button>
+      <button data-view="digest">纪要</button>
+    </div>
+    <button class="toggle on" id="followBtn" title="自动跟随最新内容">↓ 跟随最新</button>
+    <button class="btn ghost" id="demoBtn" style="font-size:12px;padding:6px 12px">▶ 模拟</button>
+  </div>
+
+  <div class="stage">
+    <div class="col col-share">
+      <div class="col-head"><span class="col-label">分享内容</span><span class="col-sub">主讲 · 提纲随讲解生长</span></div>
+      <div class="canvas" id="canvas"></div>
+    </div>
+    <div class="col col-discuss">
+      <div class="col-head"><span class="col-label">参与讨论</span><span class="col-sub">观众 · 实时收敛</span></div>
+      <div class="discussion" id="discussion"></div>
+    </div>
+  </div>
+
+  <div class="composer">
+    <div class="anchor-preview" id="anchorPreview"></div>
+    <div class="composer-row">
+      <textarea id="commentInput" placeholder="说点什么…（自动锚定到此刻正在讲的内容）"></textarea>
+      <button class="btn" id="sendBtn" disabled>发送</button>
+    </div>
+    <div class="emoji-bar" id="emojiBar">
+      <button data-emoji="👍">👍</button>
+      <button data-emoji="🔥">🔥</button>
+      <button data-emoji="😕">😕</button>
+      <button data-emoji="🤔">🤔</button>
+      <button data-emoji="❤️">❤️</button>
+      <button data-emoji="👏">👏</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="/js/audience.js"></script>
+</body>
+</html>

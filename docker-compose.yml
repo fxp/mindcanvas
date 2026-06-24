@@ -1,0 +1,23 @@
+# MindCanvas — self-host / intranet deployment.
+# Image is built elsewhere and loaded (docker load), or built locally (docker compose build).
+# All config is via .env (copy .env.example → .env). State persists in the named volume.
+services:
+  mindcanvas:
+    image: mindcanvas:latest
+    build: .
+    container_name: mindcanvas
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      - mindcanvas_data:/data          # SQLite (meetings/audio/users/settings) + digests + local docs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mindcanvas_data:

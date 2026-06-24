@@ -1,0 +1,12 @@
+# NEVER ship the key or local-only tooling to the deployed image. ASCII-only patterns
+# (non-ASCII filenames break the build-context exclude header).
+.env
+node_modules
+tools
+.digests
+*.log
+*.md
+!seed-docs/*.md
+.DS_Store
+.git
+.gstack
