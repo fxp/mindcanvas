@@ -59,6 +59,7 @@ docker compose up -d --build
 
 ## 文档
 
+- **[INSTALL.md](INSTALL.md)** — 从 Release 安装（离线镜像包 / 源码包，含下载与校验）
 - **[DEPLOY.md](DEPLOY.md)** — 部署文档（Docker / Node、配置项、内网离线、运维、安全）
 - **[USAGE.md](USAGE.md)** — 使用说明（开会流程、各视图、AI 同事、资料补充、纪要、生命周期）
 
