@@ -26,7 +26,6 @@ export function initDb(dbPath) {
       room TEXT, seq INTEGER, t INTEGER, mime TEXT, bytes BLOB, session_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_audio_room ON audio(room);
-    CREATE INDEX IF NOT EXISTS idx_audio_session ON audio(session_id);
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY, pass TEXT, role TEXT, created_at INTEGER
     );
@@ -43,8 +42,9 @@ export function initDb(dbPath) {
     );
     CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
   `);
-  // 旧库迁移：audio 表可能没有 session_id 列
+  // 旧库迁移：audio 表可能没有 session_id 列 —— 必须先加列，再建该列的索引
   try { db.exec('ALTER TABLE audio ADD COLUMN session_id TEXT'); } catch { /* 已有 */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_audio_session ON audio(session_id)'); } catch { /* */ }
   return db;
 }
 
