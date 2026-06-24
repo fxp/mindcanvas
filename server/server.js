@@ -22,6 +22,7 @@ import { uid } from './util.js';
 import { llmEnabled, llmInfo, llmReadSlide, setLlmConfig, llmPing, llmTranscribe, asrAvailable, llmCorrectPoints, llmPersonaComment, llmPersonaReply, searchMode, visionAvailable } from './llm.js';
 import * as docsearch from './docsearch.js';
 import * as search from './search.js';
+import { extractText } from './extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,6 +54,8 @@ try {
   const sp = DB.getSetting('provider');
   const sk = DB.getSetting('api_key');
   if (sk) setLlmConfig({ provider: sp || 'zhipu', key: sk, model: DB.getSetting('model') || undefined, endpoint: DB.getSetting('base_url') || undefined });
+  const sm = DB.getSetting('search_mode'); // 资料补充模式（speaker/admin 可切换并持久化）
+  if (sm) process.env.MINDCANVAS_SEARCH_MODE = sm;
   console.log(`  数据库:    ${DB_PATH}${sk ? '  (已恢复 LLM 配置)' : ''}`);
 } catch (e) {
   console.warn('[db] init failed — running without persistence:', e.message);
@@ -619,6 +622,53 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       return json(200, { ok: false, reason: e.message });
     }
+  }
+
+  // ---- speaker 上传资料到「资料补充·本地检索」语料（local 模式）----
+  if (url.pathname === '/api/docs' && req.method === 'GET') {
+    if (!isSpeaker(req)) return json(401, { ok: false, error: '需要登录' });
+    let files = [];
+    try { files = fs.readdirSync(DOCS_DIR).filter((f) => /\.(txt|md|markdown)$/i.test(f)).map((f) => ({ name: f, size: fs.statSync(path.join(DOCS_DIR, f)).size })); } catch { /* dir 未建 */ }
+    return json(200, { ok: true, files, corpus: docsearch.corpusInfo(), mode: searchMode() });
+  }
+  if (url.pathname === '/api/docs/upload' && req.method === 'POST') {
+    if (!isSpeaker(req)) return json(401, { ok: false, error: '需要登录' });
+    try {
+      const raw = url.searchParams.get('name') || 'upload.txt';
+      const buf = await readBodyBuffer(req);
+      if (!buf.length) return json(400, { ok: false, error: '空文件' });
+      if (buf.length > 12 * 1024 * 1024) return json(400, { ok: false, error: '文件过大（上限 12MB）' });
+      const r = extractText(raw, buf);
+      if (!r.ok) return json(400, { ok: false, error: r.reason });
+      const text = (r.text || '').trim();
+      if (text.length < 12) return json(400, { ok: false, error: '未提取到足够文本' });
+      const ext = (raw.split('.').pop() || '').toLowerCase();
+      const base = (raw.replace(/\.[^.]+$/, '').replace(/[\/\\]/g, '_').replace(/[^\w.一-鿿-]/g, '_').slice(0, 60)) || 'doc';
+      const isText = ext === 'txt' || ext === 'md' || ext === 'markdown';
+      const fname = isText ? base + '.' + (ext === 'markdown' ? 'md' : ext) : base + '.txt'; // docx/pptx → 抽出的 .txt
+      fs.mkdirSync(DOCS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(DOCS_DIR, fname), text, 'utf8');
+      const corpus = docsearch.loadCorpus({ indexPath: DOCS_INDEX, docsDir: DOCS_DIR, seedDir: DOCS_SEED });
+      return json(200, { ok: true, saved: fname, chars: text.length, corpus });
+    } catch (e) { return json(400, { ok: false, error: e.message }); }
+  }
+  if (url.pathname === '/api/docs' && req.method === 'DELETE') {
+    if (!isSpeaker(req)) return json(401, { ok: false, error: '需要登录' });
+    const name = (url.searchParams.get('name') || '').replace(/[\/\\]/g, '');
+    if (!name || !/\.(txt|md|markdown)$/i.test(name)) return json(400, { ok: false, error: '非法文件名' });
+    const fp = path.join(DOCS_DIR, name);
+    if (!fp.startsWith(DOCS_DIR)) return json(400, { ok: false, error: '非法路径' });
+    try { fs.unlinkSync(fp); } catch { /* 不存在 */ }
+    return json(200, { ok: true, corpus: docsearch.loadCorpus({ indexPath: DOCS_INDEX, docsDir: DOCS_DIR, seedDir: DOCS_SEED }) });
+  }
+  if (url.pathname === '/api/docs/mode' && req.method === 'POST') {
+    if (!isSpeaker(req)) return json(401, { ok: false, error: '需要登录' });
+    const body = JSON.parse(await readBody(req));
+    const m = String(body.mode || '').toLowerCase();
+    if (!['web', 'local', 'api', 'custom', 'off'].includes(m)) return json(400, { ok: false, error: '无效模式' });
+    process.env.MINDCANVAS_SEARCH_MODE = m;
+    safeDb(() => DB.setSetting('search_mode', m));
+    return json(200, { ok: true, mode: searchMode() });
   }
 
   // room-scoped pages need ?room=. Audience/screen → 404; speaker → spin up a fresh room.

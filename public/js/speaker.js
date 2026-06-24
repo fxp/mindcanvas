@@ -430,3 +430,59 @@ subscribe((state, engine) => {
   badge.textContent = engine.label || (engine.enabled ? 'LLM 综合' : '启发式综合');
   badge.className = 'badge ' + (engine.enabled ? 'on' : 'off');
 });
+
+// ---- ⑦ 上传资料到检索（资料补充·本地语料） ----
+(function docsPanel() {
+  const fileEl = document.getElementById('docFile');
+  const statusEl = document.getElementById('docStatus');
+  const listEl = document.getElementById('docList');
+  const modeBtn = document.getElementById('docModeBtn');
+  const modeHint = document.getElementById('docModeHint');
+  if (!fileEl) return;
+  let curMode = 'web';
+  const fmtKB = (b) => (b > 1e6 ? (b / 1e6).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB');
+  function renderMode() {
+    const local = curMode === 'local';
+    modeBtn.textContent = '本地检索：' + (local ? '开' : '关');
+    modeBtn.classList.toggle('ghost', !local);
+    modeHint.textContent = local ? '（资料补充用你上传的本地资料）' : '当前来源：' + curMode;
+  }
+  async function refresh() {
+    try {
+      const d = await (await fetch('/api/docs', { headers: authHeaders() })).json();
+      if (!d.ok) return;
+      curMode = d.mode; renderMode();
+      const files = d.files || [];
+      listEl.innerHTML = files.length
+        ? files.map((f) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--line)"><span>${esc(f.name)} <span style="color:var(--faint)">· ${fmtKB(f.size)}</span></span><button class="btn ghost" data-del="${esc(f.name)}" style="font-size:11px;padding:2px 8px">删除</button></div>`).join('')
+          + `<div style="color:var(--faint);margin-top:6px">语料：${d.corpus.files} 文件 · ${d.corpus.chunks} 段（含内置示例）</div>`
+        : '<span style="color:var(--faint)">暂无上传资料（内置示例语料仍可用）</span>';
+      listEl.querySelectorAll('button[data-del]').forEach((b) => b.addEventListener('click', () => delDoc(b.getAttribute('data-del'))));
+    } catch { /* ignore */ }
+  }
+  async function delDoc(name) {
+    if (!confirm('删除「' + name + '」？')) return;
+    await fetch('/api/docs?name=' + encodeURIComponent(name), { method: 'DELETE', headers: authHeaders() });
+    refresh();
+  }
+  document.getElementById('docUploadBtn').addEventListener('click', async () => {
+    const f = fileEl.files[0];
+    if (!f) { statusEl.textContent = '请选择文件'; return; }
+    statusEl.textContent = '上传中…';
+    try {
+      const buf = await f.arrayBuffer();
+      const res = await fetch('/api/docs/upload?name=' + encodeURIComponent(f.name), { method: 'POST', headers: { 'content-type': 'application/octet-stream', ...authHeaders() }, body: buf });
+      const d = await res.json();
+      if (d.ok) { statusEl.textContent = '✓ 已加入（' + d.chars + ' 字）'; fileEl.value = ''; refresh(); }
+      else statusEl.textContent = '⚠ ' + (d.error || '失败');
+    } catch (e) { statusEl.textContent = '失败：' + e.message; }
+  });
+  modeBtn.addEventListener('click', async () => {
+    const next = curMode === 'local' ? 'web' : 'local';
+    try {
+      const d = await (await fetch('/api/docs/mode', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ mode: next }) })).json();
+      if (d.ok) { curMode = d.mode; renderMode(); toast('资料补充来源：' + curMode); }
+    } catch { /* ignore */ }
+  });
+  refresh();
+})();

@@ -170,6 +170,25 @@
         部署版不烘焙任何 key。这里配置的 key 只存于服务器内存（本房间共享），不写文件、不回传前端、重启即失效。未配置时走启发式回退。
       </div>
     </div>
+
+    <div class="panel">
+      <h3>⑦ 上传资料到检索（资料补充·本地）</h3>
+      <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+        <input id="docFile" type="file" accept=".txt,.md,.markdown,.docx,.pptx" style="font-size:12px" />
+        <button class="btn" id="docUploadBtn">上传</button>
+        <span class="asr-status" id="docStatus"></span>
+      </div>
+      <div id="docList" style="margin-top:10px;font-family:var(--mono);font-size:12px"></div>
+      <div class="row" style="margin-top:10px;align-items:center;gap:8px">
+        <span class="asr-status">资料补充来源：</span>
+        <button class="btn ghost" id="docModeBtn" style="font-size:12px;padding:5px 10px">本地检索：关</button>
+        <span class="asr-status" id="docModeHint"></span>
+      </div>
+      <div class="hint">
+        支持 txt / md / docx / pptx（PDF 请转成 txt/docx，或用 tools/index_docs.py 建索引）。上传即并入「资料补充」的本地检索语料、立即生效。
+        需把来源切到「本地检索（local）」并开启 ⑤′ AI 同事，资料补充才会用你上传的内容。
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
