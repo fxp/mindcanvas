@@ -1,7 +1,8 @@
 {
   "name": "mindcanvas",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "实时会议 Agent — 把一人讲、几百人听的单向广播，变成一块实时把群体声音收敛成连贯内容的协作认知画布。",
+  "license": "MIT",
   "type": "module",
   "main": "server/server.js",
   "scripts": {
@@ -9,7 +10,7 @@
     "dev": "node --watch server/server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "ws": "^8.18.0"
