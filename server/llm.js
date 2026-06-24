@@ -86,7 +86,7 @@ export function visionAvailable() {
 // corpus), or 'off'. Default: web when a zhipu key exists, else off.
 export function searchMode() {
   const m = (process.env.MINDCANVAS_SEARCH_MODE || '').toLowerCase();
-  if (m === 'web' || m === 'local' || m === 'off') return m;
+  if (m === 'web' || m === 'local' || m === 'api' || m === 'custom' || m === 'off') return m;
   return provider() === 'zhipu' ? 'web' : 'off';
 }
 export function searchAvailable() {

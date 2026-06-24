@@ -66,9 +66,10 @@ docker compose logs -f
 | `MINDCANVAS_MODEL` | glm-5.1 | Chat 模型 |
 | `MINDCANVAS_ASR_MODEL` | glm-asr | ASR 模型 |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` | 空 | 切 Claude 时用 |
-| `MINDCANVAS_SEARCH_MODE` | web | 资料补充来源：`web` / `local` / `off` |
+| `MINDCANVAS_SEARCH_MODE` | web | 资料补充来源：`web`/`local`/`api`/`custom`/`off`（见 §6.1/§6.2） |
 | `MINDCANVAS_DOCS_DIR` | /data/docs | local 模式：放 txt/md 的目录 |
 | `MINDCANVAS_DOCS_INDEX` | /data/docs-index.json | local 模式：Word/PDF/PPT 预建索引 |
+| `MINDCANVAS_SEARCH_API_URL` | 空 | api 模式：内网检索接口地址 |
 | `MINDCANVAS_VISION` | 开 | 设 `off` 关闭幻灯片视觉 OCR |
 | `MINDCANVAS_DB` | /data/mindcanvas.db | SQLite 路径（一般不用改） |
 
@@ -109,18 +110,58 @@ PORT=8088 node server/server.js
 # 生产建议用 systemd / pm2 守护
 ```
 
-**资料补充离线化**（无外网时替代联网搜索）：
-- 设 `MINDCANVAS_SEARCH_MODE=local`。
-- 简单：把 `.txt/.md` 放进 `/data/docs`（容器内）即被检索。
-- Word/PDF/PPT：在有 Python 的机器跑
-  ```bash
-  pip install python-docx python-pptx pypdf
-  python3 tools/index_docs.py <文档目录> /path/to/docs-index.json
-  ```
-  把生成的 `docs-index.json` 放到 `/data/`（或 `MINDCANVAS_DOCS_INDEX` 指向处）。
-- 项目自带 `seed-docs/`（平安健康公开资料）作为内置示例语料，随镜像发布。
+**资料补充来源**（`MINDCANVAS_SEARCH_MODE`）：`web`=GLM 联网检索 · `local`=容器内本地文件 · `api`=内网检索接口（含自带 `search-service/`）· `custom`=改 `server/search-custom.js` 接自己的检索 · `off`。详见 §6.1 / §6.2。
+
+### 6.1 在 Docker 中放入本地资料文件（`local` 模式）
+
+容器里 `/data` 是挂载的数据卷，本地资料默认目录是 **`/data/docs`**（txt/md）+ 可选索引 **`/data/docs-index.json`**（Office/PDF）。三种放法，任选其一：
+
+**① 绑定宿主机目录（推荐，直接丢文件）** — 编辑 `docker-compose.yml`，给 mindcanvas 服务加一行挂载：
+```yaml
+    volumes:
+      - mindcanvas_data:/data
+      - ./docs:/data/docs          # ← 新增：宿主机 ./docs 映射进容器
+```
+然后 `mkdir docs`，把 `.txt/.md` 丢进宿主机的 `./docs`，`docker compose up -d`。之后增删文件无需重启，调一下重载即可（见下）。
+
+**② 直接拷进运行中的容器（用命名卷时）**
+```bash
+docker cp ./我的资料/. mindcanvas:/data/docs/      # 注意结尾的 /.
+```
+
+**③ Word / PDF / PPT** — 在任意有 Python 的机器生成索引，再放进 `/data/`：
+```bash
+pip install python-docx python-pptx pypdf
+python3 tools/index_docs.py <源文件目录> docs-index.json
+docker cp docs-index.json mindcanvas:/data/docs-index.json      # 或放进绑定目录
+```
+
+**放完让它生效**（不用重启容器）——调管理接口重载，或重启：
+```bash
+# A) 重载（需管理员令牌；登录 /admin 后浏览器里也会用到）
+TOKEN=$(curl -s -X POST -H 'content-type: application/json' \
+  --data '{"username":"admin","password":"<你的管理员密码>"}' \
+  http://localhost:8080/api/auth/login | sed 's/.*"token":"\([^"]*\)".*/\1/')
+curl -s -X POST -H "x-auth-token: $TOKEN" http://localhost:8080/api/admin/reload-docs
+# → {"ok":true,"files":N,"chunks":M}
+
+# B) 或直接重启
+docker compose restart
+```
+最后设 `MINDCANVAS_SEARCH_MODE=local`（`.env` 或 /admin），并确保 `MINDCANVAS_VISION` 等其它项不冲突。
+
+### 6.2 用「目录 → 搜索 API」独立服务（`api` 模式 / 跨机）
+
+数据不在 MindCanvas 容器里、或想单独一台机器管资料时，用自带的小服务把目录 serve 成接口（详见 `search-service/README.md`）：
+```bash
+DOCS_DIR=/data/docs PORT=8079 node search-service/server.js
+```
+再让 MindCanvas 接它：`MINDCANVAS_SEARCH_MODE=api`、`MINDCANVAS_SEARCH_API_URL=http://<服务IP>:8079/search`。
+想接你**自己**的检索系统：实现同样的 `/search` 契约用 `api` 模式，或改 `server/search-custom.js` 用 `custom` 模式。
 
 **无视觉模型** → `MINDCANVAS_VISION=off`，幻灯片改手填标题/正文，主流程不受影响。
+
+> 项目自带 `seed-docs/`（平安健康公开资料）作为内置示例语料，随镜像发布——`local` 模式开箱即有内容。
 
 ---
 

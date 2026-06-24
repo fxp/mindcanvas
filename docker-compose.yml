@@ -13,6 +13,9 @@ services:
       - .env
     volumes:
       - mindcanvas_data:/data          # SQLite (meetings/audio/users/settings) + digests + local docs
+      # 本地资料（local 模式）：取消下一行注释，把宿主机 ./docs 映射进去，往里丢 txt/md
+      # 或 tools/index_docs.py 生成的 docs-index.json；改完调 /api/admin/reload-docs 即可（无需重启）。
+      # - ./docs:/data/docs
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 30s

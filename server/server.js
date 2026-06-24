@@ -19,8 +19,9 @@ import { runTranscript } from './transcript.js';
 import { buildDigest, digestToMarkdown } from './digest.js';
 import * as DB from './db.js';
 import { uid } from './util.js';
-import { llmEnabled, llmInfo, llmReadSlide, setLlmConfig, llmPing, llmTranscribe, asrAvailable, llmCorrectPoints, llmPersonaComment, llmPersonaReply, llmSearchSupplement, llmSearchLocal, searchAvailable, searchMode, visionAvailable } from './llm.js';
+import { llmEnabled, llmInfo, llmReadSlide, setLlmConfig, llmPing, llmTranscribe, asrAvailable, llmCorrectPoints, llmPersonaComment, llmPersonaReply, searchMode, visionAvailable } from './llm.js';
 import * as docsearch from './docsearch.js';
+import * as search from './search.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -382,6 +383,12 @@ const server = http.createServer(async (req, res) => {
     if (!isAdmin(req)) return json(401, { ok: false, error: 'unauthorized' });
 
     if (url.pathname === '/api/admin/check') return json(200, { ok: true });
+
+    // 重新加载本地资料语料（往 /data/docs 放/改文件后无需重启容器）
+    if (url.pathname === '/api/admin/reload-docs' && req.method === 'POST') {
+      const info = docsearch.loadCorpus({ indexPath: DOCS_INDEX, docsDir: DOCS_DIR, seedDir: DOCS_SEED });
+      return json(200, { ok: true, ...info });
+    }
 
     if (url.pathname === '/api/admin/config' && req.method === 'GET') {
       return json(200, { ok: true, info: llmInfo(), persisted: !!safeDb(() => DB.getSetting('api_key')) });
@@ -784,13 +791,9 @@ setInterval(() => {
 
 // §资料补充: enrich the current content with a relevant fact/datum + source, at a slower
 // cadence (~40–70s). Tied to the same AI-participation toggle. Source depends on searchMode:
-//   web   → GLM web_search (needs internet)
-//   local → offline corpus (Word/PDF/PPT/txt indexed); no network needed
+// 来源由统一适配层 server/search.js 决定（web / local / api / custom / off）。
 setInterval(() => {
-  const mode = searchMode();
-  if (mode === 'off') return;
-  if (mode === 'web' && !searchAvailable()) return;
-  if (mode === 'local' && !docsearch.ready()) return;
+  if (!search.searchEnabled()) return;
   const now = Date.now();
   for (const room of rooms.values()) {
     if (!room.agentsOn || room.suppBusy || now < room.nextSupplementAt) continue;
@@ -798,10 +801,7 @@ setInterval(() => {
     const pts = sec ? (sec.children || []).map((id) => room.store.nodes.get(id)).filter((n) => n && n.kind === 'point').map((p) => p.text) : [];
     if (pts.length < 3) continue;
     room.suppBusy = true;
-    const task = mode === 'local'
-      ? llmSearchLocal(sec.text, pts, docsearch.searchLocal(sec.text + ' ' + pts.slice(-4).join(' ')))
-      : llmSearchSupplement(sec.text, pts);
-    task
+    search.supplement(sec.text, pts)
       .then((r) => { if (r.text) applyEvent(room, { type: 'supplement.add', text: r.text, source: r.source, nodeId: room.store.currentSectionId }); })
       .catch((e) => console.warn('[supplement]', e.message))
       .finally(() => { room.suppBusy = false; room.nextSupplementAt = Date.now() + 40000 + Math.random() * 30000; });
