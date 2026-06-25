@@ -19,7 +19,7 @@ import { runTranscript } from './transcript.js';
 import { buildDigest, digestToMarkdown } from './digest.js';
 import * as DB from './db.js';
 import { uid } from './util.js';
-import { llmEnabled, llmInfo, llmReadSlide, setLlmConfig, llmPing, llmTranscribe, asrAvailable, llmCorrectPoints, llmPersonaComment, llmPersonaReply, searchMode, visionAvailable } from './llm.js';
+import { llmEnabled, llmInfo, llmReadSlide, setLlmConfig, llmPing, llmTranscribe, asrAvailable, llmCorrectPoints, llmPersonaComment, llmPersonaReply, llmDistillKeyPoints, searchMode, visionAvailable } from './llm.js';
 import * as docsearch from './docsearch.js';
 import * as search from './search.js';
 import { extractText } from './extract.js';
@@ -173,6 +173,7 @@ class Room {
     this.dirty = true;
     this.clustering = false;
     this.segmenting = false;
+    this.kpBusy = false; // §思维导图核心观点提炼
     this.correcting = false;
     this.agentsOn = false; // §participation: AI colleague personas auto-comment
     this.agentBusy = false;
@@ -875,6 +876,33 @@ setInterval(() => {
       .finally(() => { room.segmenting = false; });
   }
 }, 4500);
+
+// §思维导图核心观点：把每节口语要点提炼成「核心观点」（脑图只显示这些，不显示原话）。
+// 每个 tick 只处理一节（最需要的），控制 LLM 调用量。
+setInterval(() => {
+  if (!llmEnabled()) return;
+  for (const room of rooms.values()) {
+    if (room.ended || room.kpBusy) continue;
+    const s = room.store;
+    const secs = (s.nodes.get(s.root)?.children || []).map((id) => s.nodes.get(id)).filter((n) => n && n.kind === 'section');
+    const targets = [];
+    for (const sec of secs) {
+      const pts = (sec.children || []).map((id) => s.nodes.get(id)).filter((p) => p && p.kind === 'point');
+      if (pts.length < 2) continue;
+      const grown = pts.length - (sec._kpLen || 0);
+      if (!sec.keyPoints || grown >= 2) targets.push({ sec, pts });
+      if (targets.length >= 4) break; // cap LLM calls per tick
+    }
+    if (!targets.length) continue;
+    room.kpBusy = true;
+    targets.forEach((t) => { t.sec._kpLen = t.pts.length; }); // mark attempted
+    Promise.all(targets.map((t) =>
+      llmDistillKeyPoints(t.sec.text, t.pts.map((p) => p.text))
+        .then((kp) => { if (kp.length) { room.store.setKeyPoints(t.sec.id, kp); room.dirty = true; } })
+        .catch((e) => console.warn('[keypoints]', e.message))
+    )).finally(() => { room.kpBusy = false; });
+  }
+}, 8000);
 
 // §定期校正：periodically re-read recent ASR points and fix recognition errors using
 // context (homophones / names / numbers). Each point is corrected once; the live

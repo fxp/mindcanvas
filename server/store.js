@@ -215,6 +215,14 @@ export class Store {
     n.provisional = false;
   }
 
+  // §思维导图：存一节提炼出的核心观点（不影响大纲里的原始要点）
+  setKeyPoints(id, points) {
+    const n = this._node(id);
+    if (!n) return;
+    n.keyPoints = points;
+    n._kpLen = (n.children || []).length;
+  }
+
   // §定期校正：replace a point's ASR text with a context-corrected version (once)
   correctPoint(id, text) {
     const n = this._node(id);
@@ -518,6 +526,7 @@ export class Store {
         metrics: n.metrics,
         provisional: !!n.provisional,
         asrDriven: !!n.asrDriven,
+        keyPoints: n.keyPoints || null, // §思维导图：提炼后的核心观点
         speaker: n.speaker || null,
         open: n.id === (this._node(this.currentSectionId)?._openPointId),
       };

@@ -17,12 +17,15 @@ export function renderMindmap(state, container) {
   let row = 0;
   const layout = [];
   for (const s of sections) {
-    const pts = (s.children || []).map((id) => state.nodes[id]).filter(Boolean);
+    // 思维导图只显示提炼后的「核心观点」，不显示逐句口语原话
+    const leaves = (s.keyPoints && s.keyPoints.length)
+      ? s.keyPoints
+      : ((s.children || []).length ? ['核心观点提炼中…'] : []);
     const start = row;
-    const ptRows = pts.map(() => row++);
-    if (!pts.length) row++;
+    const ptRows = leaves.map(() => row++);
+    if (!leaves.length) row++;
     const cy = ((start + (row - 1)) / 2) * ROW + PAD + ROW / 2;
-    layout.push({ s, pts, ptRows, cy });
+    layout.push({ s, leaves, ptRows, cy });
   }
   const H = Math.max(row, 1) * ROW + PAD * 2;
   const rootY = H / 2;
@@ -41,10 +44,10 @@ export function renderMindmap(state, container) {
     svg += link(X0 + 4, rootY, X1, L.cy);
     svg += dot(X1, L.cy, 'mm-sec') + label(X1, L.cy, trunc((L.s.provisional ? '○ ' : '') + L.s.text, 22), 'mm-sec', L.s.id);
     if (heat) svg += `<text class="mm-heat" x="${X1 + 9}" y="${L.cy + 16}">🔥 ${heat}</text>`;
-    L.pts.forEach((p, i) => {
+    L.leaves.forEach((txt, i) => {
       const py = L.ptRows[i] * ROW + PAD + ROW / 2;
       svg += link(X1 + 4, L.cy, X2, py);
-      svg += dot(X2, py, 'mm-pt') + label(X2, py, trunc(p.text, 32), 'mm-pt', p.id);
+      svg += dot(X2, py, 'mm-pt') + label(X2, py, trunc(txt, 40), 'mm-pt', L.s.id);
     });
   }
 

@@ -304,10 +304,12 @@ export async function llmSegmentNarration(pointTexts, prevTitle = '') {
   const system =
     '你在为一段“没有幻灯片”的连续演讲做实时分段，只能依赖语音转写出来的要点。任务：' +
     '1) 为这些要点所讲的“当前话题”起一个具体、有信息量的标题（≤14字，用演讲所用的语言；避免“AI问题/谈一谈”这类空泛词）；' +
-    '2) 判断靠后的要点是否【明显】开启了一个新话题。' +
-    '【务必保守】：同一大主题下的展开、举例、递进都不算新话题，宁可不分也不要把一个话题切碎；只有话题实质转向时才分。' +
-    '若分段，给出起始要点编号 splitAt（整数）与新话题标题 newTitle；否则 splitAt 用 null。' +
-    (prevTitle ? `上一节标题是「${prevTitle}」——当前/新标题必须与它【明显不同】，不要近义重复；若内容其实是上一节的延续，就不要分段、并把 title 与上一节区分开。` : '') +
+    '2) 判断靠后的要点是否开启了一个新的子话题/小节。' +
+    '分段原则：演讲应被切成多个聚焦的小节，每节围绕一个子主题，一节通常 3~8 个要点。' +
+    '当话题转到新的方面、要点、步骤、案例类别或论证阶段时就分段；明显的枚举/转折提示词（第一/第二/首先/接下来/另外/再看/下面讲/回到…）几乎总是边界。' +
+    '只在【同一句话被切成多个要点】这种确属同一连续表达时才不分。要点已累计较多（≥8）却还没分时，请在最近的自然边界处分。' +
+    '若分段，给出起始要点编号 splitAt（整数，≥2）与新话题标题 newTitle；不分则 splitAt 用 null。' +
+    (prevTitle ? `上一节标题是「${prevTitle}」——新标题须与它明显不同、不要近义重复。` : '') +
     '严格只输出 JSON：{"title":"","splitAt":null,"newTitle":""}';
   const user = `演讲要点（编号. 文本）：\n${list}`;
   const text = await chat({ system, user, maxTokens: 400 });
@@ -363,6 +365,19 @@ export async function llmFuseSection(title, pointTexts, clusters) {
     summary: p.summary || '',
     highlights: Array.isArray(p.highlights) ? p.highlights : [],
   };
+}
+
+// §思维导图：把某一节的「逐句口语转写」提炼成几条【核心观点】（不照抄原话）。
+export async function llmDistillKeyPoints(title, pointTexts) {
+  const list = pointTexts.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  const system =
+    '你在把演讲某一节的逐句口语转写提炼成【核心观点】，用于思维导图。要求：' +
+    '输出 2~5 条；每条 ≤16 字、书面化、信息密度高、是提炼后的观点而非照抄原话；' +
+    '只保留支撑该节的关键论点/结论/事实/数据，丢弃口语、寒暄、重复、语气词、与主题无关的话。' +
+    '严格只输出 JSON：{"points":["",""]}；无实质内容则空数组。';
+  const text = await chat({ system, user: `小节「${title}」逐句转写：\n${list}`, maxTokens: 300 });
+  const p = extractJson(text);
+  return Array.isArray(p.points) ? p.points.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 5) : [];
 }
 
 // 从全场讲者要点 + 现场评论里抽取「可落地的沉淀」：行动项 / 决议 / 待解答 / 风险争议。
