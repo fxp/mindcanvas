@@ -7,6 +7,17 @@ export function renderTimeline(state, container) {
   const startedAt = state.config.startedAt;
   const items = [];
 
+  // 演讲主体：章节 + 逐句要点沿时间轴（没有幻灯片时这才是主线）
+  const root = state.nodes[state.root];
+  for (const secId of (root && root.children) || []) {
+    const sec = state.nodes[secId];
+    if (!sec) continue;
+    const pts = (sec.children || []).map((id) => state.nodes[id]).filter((p) => p && p.kind === 'point');
+    const secT = sec.t_start || (pts[0] && pts[0].t_start) || startedAt;
+    if (sec.kind === 'section') items.push({ t: secT, kind: 'section', body: sec.text });
+    for (const p of pts) items.push({ t: p.t_start || secT, kind: 'point', body: p.text, speaker: p.speaker });
+  }
+
   for (const slide of state.slides) {
     items.push({ t: slide.t_start, kind: 'slide', body: slide.title });
   }
@@ -37,7 +48,11 @@ export function renderTimeline(state, container) {
     .map((it) => {
       const time = relTime(it.t, startedAt);
       let body = '';
-      if (it.kind === 'slide') {
+      if (it.kind === 'section') {
+        body = `<strong>▎${esc(it.body)}</strong>`;
+      } else if (it.kind === 'point') {
+        body = `🗣 ${it.speaker ? '[' + esc(it.speaker) + '] ' : ''}${esc(it.body)}`;
+      } else if (it.kind === 'slide') {
         body = `▸ ${esc(it.body)}`;
       } else if (it.kind === 'comment') {
         body = `${it.q ? '❓ ' : '💬 '}${esc(it.body)}`;
